@@ -1,0 +1,12 @@
+(define compile-options "-O3 -C -O3")
+(define link-options "")
+
+(compile ,compile-options ,link-options -s -d1 -j posix-safe-mem posix-safe-mem.scm)
+(compile ,compile-options ,link-options -s -d0 posix-safe-mem.import.scm)
+(compile ,compile-options ,link-options -c -d1 -j posix-safe-mem -unit posix-safe-mem posix-safe-mem.scm)
+
+(install-extension
+ 'posix-safe-mem
+ '("posix-safe-mem.so" "posix-safe-mem.o" "posix-safe-mem.import.so")
+ '((version 0.5)
+   (static "posix-safe-mem.o")))

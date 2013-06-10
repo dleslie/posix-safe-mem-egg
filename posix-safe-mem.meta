@@ -1,0 +1,8 @@
+;;;; -*- Scheme -*-
+
+((license "BSD3")
+ (category io)
+ (author "Daniel J. Leslie")
+ (synopsis "POSIX Safe Memory")
+ (needs posix posix-shm posix-semaphore miscmacros uuid)
+ (doc-from-wiki))
