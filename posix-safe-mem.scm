@@ -12,21 +12,16 @@
                    (safe-mem-semaphore m) (safe-mem-semaphore-name m) (safe-mem-memory-size m) (safe-mem-shared-memory m) (safe-mem-shared-memory-path m) (safe-mem-memory-map m) (safe-mem-copy m)))
 
         (define (lock-safe-mem safe-mem)
-          (when (eq? 0 (safe-mem-pass-count safe-mem))
+          (when (>= 0 (safe-mem-pass-count safe-mem))
                 (sem-wait (safe-mem-semaphore safe-mem)))
           (safe-mem-pass-count-set! safe-mem (+ 1 (safe-mem-pass-count safe-mem))))
 
         (define (unlock-safe-mem safe-mem)
-          (when (not (eq? 0 (safe-mem-pass-count safe-mem)))
-                (safe-mem-pass-count-set! safe-mem (+ 1 (safe-mem-pass-count safe-mem))))
-          (when (eq? 0 (safe-mem-pass-count safe-mem))
+          (when (< 0 (safe-mem-pass-count safe-mem))
+                (safe-mem-pass-count-set! safe-mem (- 1 (safe-mem-pass-count safe-mem))))
+          ;; pass-count does not reside in shared memory, and so is a process-local variable
+          (when (>= 0 (safe-mem-pass-count safe-mem))
                 (sem-post (safe-mem-semaphore safe-mem))))
-
-        (define (lock-safe-mem safe-mem)
-          (sem-wait (safe-mem-semaphore safe-mem)))
-
-        (define (unlock-safe-mem safe-mem)
-          (sem-post (safe-mem-semaphore safe-mem)))
 
         (define-syntax with-safe-mem
           (syntax-rules ()

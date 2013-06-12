@@ -32,6 +32,16 @@
 (printf "Parent process unlocked the semaphore\n")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Test nesting
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(with-safe-mem safe-data
+               (printf "Entered nesting level 0\n")
+               (with-safe-mem safe-data
+                              (printf "Entered nesting level 1\n"))
+               (printf "Exiting nesting altogether\n"))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Test reading/writing
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
