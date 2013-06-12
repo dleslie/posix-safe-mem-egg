@@ -5,39 +5,36 @@
 
         ;; Store PSHM object
         (define-record safe-mem 
-          semaphore semaphore-name memory-size shared-memory shared-memory-path memory-map copy owner-pid pass-count)
+          semaphore semaphore-name memory-size shared-memory shared-memory-path memory-map memory-map-protection memory-map-flags copy grow shrink pass-count)
 
         (define-record-printer (safe-mem m p)
           (fprintf p "#,<safe-mem semaphore: ~S semaphore-name: ~S memory-size: ~S shared-memory: ~S shared-memory-path: ~S memory-map: ~S copy: ~S>"
                    (safe-mem-semaphore m) (safe-mem-semaphore-name m) (safe-mem-memory-size m) (safe-mem-shared-memory m) (safe-mem-shared-memory-path m) (safe-mem-memory-map m) (safe-mem-copy m)))
 
         (define (lock-safe-mem safe-mem)
-          (when (not (eq? (current-process-id) (safe-mem-owner-pid safe-mem)))
-                (sem-wait (safe-mem-semaphore safe-mem))
-                (safe-mem-owner-pid-set! safe-mem (current-process-id)))
+          (when (eq? 0 (safe-mem-pass-count safe-mem))
+                (sem-wait (safe-mem-semaphore safe-mem)))
           (safe-mem-pass-count-set! safe-mem (+ 1 (safe-mem-pass-count safe-mem))))
 
         (define (unlock-safe-mem safe-mem)
-          (when (eq? (current-process-id) (safe-mem-owner-pid safe-mem))
-                (safe-mem-pass-count-set! safe-mem (+ 1 (safe-mem-pass-count safe-mem)))
-                (when (eq? 0 (safe-mem-pass-count safe-mem))
-                      (safe-mem-owner-pid-set! safe-mem #f)
-                      (sem-post (safe-mem-semaphore safe-mem)))))
+          (when (not (eq? 0 (safe-mem-pass-count safe-mem)))
+                (safe-mem-pass-count-set! safe-mem (+ 1 (safe-mem-pass-count safe-mem))))
+          (when (eq? 0 (safe-mem-pass-count safe-mem))
+                (sem-post (safe-mem-semaphore safe-mem))))
 
-        ;; Copy to/from PSHM
-        ;; Second semaphore, inc on passing first, dec on done, if can't dec, then post first.
+        (define (lock-safe-mem safe-mem)
+          (sem-wait (safe-mem-semaphore safe-mem)))
+
+        (define (unlock-safe-mem safe-mem)
+          (sem-post (safe-mem-semaphore safe-mem)))
+
         (define-syntax with-safe-mem
           (syntax-rules ()
-            ((with-safe-mem () body1 body2 ...)
-             (begin body1 body2 ...))
-            ((with-safe-mem (safe-mem1 safe-mem2 ...) body1 body2 ...)
+            ((with-safe-mem safe-mem body ...)
              (dynamic-wind
-                 (lambda ()
-                   (lock-safe-mem safe-mem1))
-                 (lambda ()
-                   (with-safe-mem (safe-mem2 ...) body1 body2 ...))
-                 (lambda ()
-                   (unlock-safe-mem safe-mem1))))))
+                 (lambda () (lock-safe-mem safe-mem))
+                 (lambda () body ...)
+                 (lambda () (unlock-safe-mem safe-mem))))))
 
         ;; get: lambda returns value, using unevict if copy and pointer->object if not
         (define (safe-mem-get safe-mem)
@@ -52,21 +49,40 @@
           ;; Check if mmap or resize is necessary
           (when (or (not (safe-mem-memory-map safe-mem)) 
                     (> (object-size value) (safe-mem-memory-size safe-mem)))
-                ;; Unmap if we're resizing
-                (when (safe-mem-memory-map safe-mem)
-                      (unmap-file-from-memory (safe-mem-memory-map safe-mem)))
-                ;; Set the new size if necessary
-                (when (> (object-size value) (safe-mem-memory-size safe-mem))
-                      (safe-mem-memory-size-set! safe-mem (object-size value)))
-                ;; Resize the pshm object
-                (file-truncate (safe-mem-shared-memory safe-mem) (safe-mem-memory-size safe-mem))
-                ;; mmap ahoy
-                (let ((mmap (map-file-to-memory #f (safe-mem-memory-size safe-mem) (bitwise-ior prot/read prot/write prot/exec) map/shared (safe-mem-shared-memory safe-mem))))
-                  (safe-mem-memory-map-set! safe-mem mmap)))
+                (let ((remap (not (safe-mem-memory-map safe-mem))))
+                  ;; Set the new size if necessary
+                  (when (or (and (safe-mem-grow safe-mem) (> (object-size value) (safe-mem-memory-size safe-mem)))
+                            (and (safe-mem-shrink safe-mem) (< (object-size value) (safe-mem-memory-size safe-mem))))
+                        (safe-mem-memory-size-set! safe-mem (object-size value))
+                        (set! remap #t))
+                  ;; Resize the pshm object if necessary
+                  (safe-mem-truncate! safe-mem)
+                  ;; Remap the memory map if any resizing occurred, or if we're initializing
+                  (when remap
+                        ;; Unmap if we're resizing and not initializing
+                        (when (safe-mem-memory-map safe-mem)
+                              (unmap-file-from-memory (safe-mem-memory-map safe-mem)))
+                        ;; mmap ahoy
+                        (let ((mmap (map-file-to-memory #f (safe-mem-memory-size safe-mem) 
+                                                        (safe-mem-memory-map-protection safe-mem) 
+                                                        (safe-mem-memory-map-flags safe-mem) 
+                                                        (safe-mem-shared-memory safe-mem))))
+                          (safe-mem-memory-map-set! safe-mem mmap)))))
           ;; Write the new value to the location
           (receive (v p) 
                    (object-evict-to-location value (memory-mapped-file-pointer (safe-mem-memory-map safe-mem)) (safe-mem-memory-size safe-mem))
                    v))
+
+        (define (safe-mem-get/lock safe-mem)
+          (with-safe-mem safe-mem (safe-mem-get safe-mem)))
+
+        (define (safe-mem-set!/lock safe-mem value)
+          (with-safe-mem safe-mem (safe-mem-set! safe-mem value)))
+
+        (define (safe-mem-truncate! safe-mem #!optional (size #f))
+          (when (not size)
+                (set! size (safe-mem-memory-size safe-mem)))
+          (file-truncate (safe-mem-shared-memory safe-mem) size))
 
         ;; Create PSHM object
         ;; Want optional size
@@ -75,18 +91,30 @@
             (lambda (value 
                      #!key (semaphore-name (sprintf "/safe-mem-semaphore-~A" (uuid-v4)))
                      (shared-memory-name (sprintf "/safe-mem-shared-memory-~A" (uuid-v4)))
+                     (shared-memory-flags (list open/creat open/rdwr))
+                     (semaphore-flags o/creat)
+                     (semaphore-mode 0644)
                      (size (object-size value))
-                     (copy #t))
-              (let ((safe-mem (%make (sem-open/mode semaphore-name o/creat 0644 1)
+                     (memory-map-protection (bitwise-ior prot/read prot/write prot/exec))
+                     (memory-map-flags map/shared)
+                     (copy #t)
+                     (grow #t)
+                     (shrink #t))
+              (let* ((mmap #f)
+                     (pass-count 0)
+                     (safe-mem (%make (sem-open/mode semaphore-name semaphore-flags semaphore-mode 1)
                                      semaphore-name
                                      size
-                                     (shm-open shared-memory-name (list open/creat open/rdwr))
+                                     (shm-open shared-memory-name shared-memory-flags)
                                      shared-memory-name
-                                     #f
+                                     mmap
+                                     memory-map-protection
+                                     memory-map-flags
                                      copy
-                                     #f
-                                     0
-                                     )))
+                                     grow
+                                     shrink
+                                     pass-count)))
+                ;; safe-mem-set! handles the initialization of the mmap, as well as writing the value
                 (safe-mem-set! safe-mem value)
                 safe-mem))))
 
