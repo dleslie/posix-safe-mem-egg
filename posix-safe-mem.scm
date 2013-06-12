@@ -38,8 +38,6 @@
                 (object-unevict primary)
                 primary)))
 
-        ;; setter: lambda sets value, using evict-object; if object-size > size then resize memory first
-        ;; TODO: proper copy
         (define (safe-mem-set! safe-mem value)
           ;; Check if mmap or resize is necessary
           (when (or (not (safe-mem-memory-map safe-mem)) 
@@ -79,8 +77,6 @@
                 (set! size (safe-mem-memory-size safe-mem)))
           (file-truncate (safe-mem-shared-memory safe-mem) size))
 
-        ;; Create PSHM object
-        ;; Want optional size
         (define make-safe-mem
           (let ((%make make-safe-mem))
             (lambda (value 
