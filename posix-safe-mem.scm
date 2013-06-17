@@ -41,6 +41,7 @@
         ;; setter: lambda sets value, using evict-object; if object-size > size then resize memory first
         ;; TODO: proper copy
         (define (safe-mem-set! safe-mem value)
+          (assert (< 0 (object-size value)) "Cannot store objects of size zero in safe memory. (Did you attempt to store an immediate object?)")
           ;; Check if mmap or resize is necessary
           (when (or (not (safe-mem-memory-map safe-mem)) 
                     (> (object-size value) (safe-mem-memory-size safe-mem)))
@@ -95,6 +96,7 @@
                      (copy #t)
                      (grow #t)
                      (shrink #t))
+              (assert (< 0 (object-size value)) "Cannot store objects of size zero in safe memory. (Did you attempt to store an immediate object?)")
               (let* ((mmap #f)
                      (pass-count 0)
                      (safe-mem (%make (sem-open/mode semaphore-name semaphore-flags semaphore-mode 1)
