@@ -124,14 +124,17 @@
 
         (define (swap-safe-mem! a b)
           (with-safe-mem 
-           (a b)
-           (if (safe-mem-copy a)
-               (let* ((t (safe-mem-get a))
-                      (t2 (safe-mem-get b)))
-                 (safe-mem-set! a (if (safe-mem-copy b) t2 (object-evict t2)))
-                 (safe-mem-set! b t))
-               (let* ((t (object-evict (safe-mem-get a)))
-                      (t2 (safe-mem-get b)))
-                 (safe-mem-set! a (if (safe-mem-copy b) t2 (object-evict t2)))
-                 (safe-mem-set! b t)))))
+           a 
+           (with-safe-mem 
+            b
+            (if (safe-mem-copy a)
+                (let* ((t (safe-mem-get a))
+                       (t2 (safe-mem-get b)))
+                  (safe-mem-set! a (if (safe-mem-copy b) t2 (object-evict t2)))
+                  (safe-mem-set! b t))
+                (let* ((t (object-evict (safe-mem-get a)))
+                       (t2 (safe-mem-get b)))
+                  (safe-mem-set! a (if (safe-mem-copy b) t2 (object-evict t2)))
+                  (safe-mem-set! b t)))))
+          #t)
 )
