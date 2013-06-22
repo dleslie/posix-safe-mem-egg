@@ -8,8 +8,8 @@
           semaphore semaphore-name memory-size shared-memory shared-memory-path memory-map memory-map-protection memory-map-flags copy grow shrink pass-count)
 
         (define-record-printer (safe-mem m p)
-          (fprintf p "#,<safe-mem semaphore: ~S semaphore-name: ~S memory-size: ~S shared-memory: ~S shared-memory-path: ~S memory-map: ~S copy: ~S>"
-                   (safe-mem-semaphore m) (safe-mem-semaphore-name m) (safe-mem-memory-size m) (safe-mem-shared-memory m) (safe-mem-shared-memory-path m) (safe-mem-memory-map m) (safe-mem-copy m)))
+          (fprintf p "#,<safe-mem semaphore: ~S semaphore-name: ~S memory-size: ~S shared-memory: ~S shared-memory-path: ~S memory-map: ~S copy: ~S grow: ~S shrink: ~S pass-count:~S>"
+                   (safe-mem-semaphore m) (safe-mem-semaphore-name m) (safe-mem-memory-size m) (safe-mem-shared-memory m) (safe-mem-shared-memory-path m) (safe-mem-memory-map m) (safe-mem-copy m) (safe-mem-grow m) (safe-mem-shrink m) (safe-mem-pass-count m)))
 
         (define (lock-safe-mem safe-mem)
           (when (>= 0 (safe-mem-pass-count safe-mem))
@@ -35,7 +35,7 @@
         (define (safe-mem-get safe-mem)
           (let ((primary (pointer->object (memory-mapped-file-pointer (safe-mem-memory-map safe-mem)))))
             (car (if (safe-mem-copy safe-mem)
-                     (object-unevict primary)
+                     (object-unevict primary #t)
                      primary))))
 
         (define (safe-mem-set! safe-mem value)
