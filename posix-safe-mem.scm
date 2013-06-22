@@ -39,12 +39,13 @@
                 primary)))
 
         (define (safe-mem-set! safe-mem value)
-          (assert (< 0 (object-size value)) "Shared object size must be greater than zero. (Did you try to share an immediate object?)")
+          (let ((size (object-size value)))
+            (assert (< 0 size) "Shared object size must be greater than zero. (Did you try to share an immediate object?)")
+            (assert (<= size (safe-mem-memory-size safe-mem)) (format "New value size (~A) must be less than or equal to safe mem memory size (~A)." size (safe-mem-memory-size safe-mem))))
           ;; Write the new value to the location
           (receive (v p) 
                    (object-evict-to-location value 
-                                             (memory-mapped-file-pointer (safe-mem-memory-map safe-mem))
-                                             (safe-mem-memory-size safe-mem))
+                                             (memory-mapped-file-pointer (safe-mem-memory-map safe-mem)))
                    v))
 
         (define (safe-mem-get/lock safe-mem)
