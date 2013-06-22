@@ -87,30 +87,30 @@
                      (shared-memory-flags (list open/creat open/rdwr))
                      (semaphore-flags o/creat)
                      (semaphore-mode 0644)
-                     (size (object-size value))
                      (memory-map-protection (bitwise-ior prot/read prot/write prot/exec))
                      (memory-map-flags map/shared)
                      (copy #t)
                      (grow #t)
                      (shrink #t))
-              (assert (< 0 size) "Shared object size must be greater than zero. (Did you try to share an immediate object?)")
-              (let* ((mmap #f)
-                     (pass-count 0)
-                     (safe-mem (%make (sem-open/mode semaphore-name semaphore-flags semaphore-mode 1)
-                                     semaphore-name
-                                     size
-                                     (shm-open shared-memory-name shared-memory-flags)
-                                     shared-memory-name
-                                     mmap
-                                     memory-map-protection
-                                     memory-map-flags
-                                     copy
-                                     grow
-                                     shrink
-                                     pass-count)))
-                ;; safe-mem-set! handles the initialization of the mmap, as well as writing the value
-                (safe-mem-set! safe-mem value)
-                safe-mem))))
+              (let ((size (object-size value)))
+                (assert (< 0 size) "Shared object size must be greater than zero. (Did you try to share an immediate object?)")
+                (let* ((mmap #f)
+                       (pass-count 0)
+                       (safe-mem (%make (sem-open/mode semaphore-name semaphore-flags semaphore-mode 1)
+                                        semaphore-name
+                                        size
+                                        (shm-open shared-memory-name shared-memory-flags)
+                                        shared-memory-name
+                                        mmap
+                                        memory-map-protection
+                                        memory-map-flags
+                                        copy
+                                        grow
+                                        shrink
+                                        pass-count)))
+                  ;; safe-mem-set! handles the initialization of the mmap, as well as writing the value
+                  (safe-mem-set! safe-mem value)
+                  safe-mem)))))
 
         (define (free-safe-mem! safe-mem)
           (and
