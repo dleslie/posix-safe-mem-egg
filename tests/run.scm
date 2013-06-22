@@ -8,7 +8,7 @@
 
 ;; It's important to note that safe-data will not be of type <data>, but rather will be of type <safe-mem>.
 ;; The <data> record stored inside of the safe memory can be retrieved via safe-mem-get
-(define safe-data (make-safe-mem (make-data #t)))
+(define safe-data (make-safe-mem (make-data #t) size: 1024))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Test locking

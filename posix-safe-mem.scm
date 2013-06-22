@@ -5,11 +5,11 @@
 
         ;; Store PSHM object
         (define-record safe-mem 
-          semaphore semaphore-name memory-size shared-memory shared-memory-path memory-map memory-map-protection memory-map-flags copy grow shrink pass-count)
+          semaphore semaphore-name memory-size shared-memory shared-memory-path memory-map memory-map-protection memory-map-flags copy pass-count #|grow shrink |#)
 
         (define-record-printer (safe-mem m p)
-          (fprintf p "#,<safe-mem semaphore: ~S semaphore-name: ~S memory-size: ~S shared-memory: ~S shared-memory-path: ~S memory-map: ~S copy: ~S grow: ~S shrink: ~S pass-count:~S>"
-                   (safe-mem-semaphore m) (safe-mem-semaphore-name m) (safe-mem-memory-size m) (safe-mem-shared-memory m) (safe-mem-shared-memory-path m) (safe-mem-memory-map m) (safe-mem-copy m) (safe-mem-grow m) (safe-mem-shrink m) (safe-mem-pass-count m)))
+          (fprintf p "#,<safe-mem semaphore: ~S semaphore-name: ~S memory-size: ~S shared-memory: ~S shared-memory-path: ~S memory-map: ~S copy: ~S pass-count:~S>"
+                   (safe-mem-semaphore m) (safe-mem-semaphore-name m) (safe-mem-memory-size m) (safe-mem-shared-memory m) (safe-mem-shared-memory-path m) (safe-mem-memory-map m) (safe-mem-copy m) (safe-mem-pass-count m)))
 
         (define (lock-safe-mem safe-mem)
           (when (>= 0 (safe-mem-pass-count safe-mem))
@@ -40,28 +40,28 @@
 
         (define (safe-mem-set! safe-mem value)
           (assert (< 0 (object-size value)) "Shared object size must be greater than zero. (Did you try to share an immediate object?)")
-          ;; Check if mmap or resize is necessary
-          (when (or (not (safe-mem-memory-map safe-mem)) 
-                    (> (object-size value) (safe-mem-memory-size safe-mem)))
-                (let ((remap (not (safe-mem-memory-map safe-mem))))
-                  ;; Set the new size if necessary
-                  (when (or (and (safe-mem-grow safe-mem) (> (object-size value) (safe-mem-memory-size safe-mem)))
-                            (and (safe-mem-shrink safe-mem) (< (object-size value) (safe-mem-memory-size safe-mem))))
-                        (safe-mem-memory-size-set! safe-mem (object-size value))
-                        (set! remap #t))
-                  ;; Resize the pshm object if necessary
-                  (safe-mem-truncate! safe-mem)
-                  ;; Remap the memory map if any resizing occurred, or if we're initializing
-                  (when remap
-                        ;; Unmap if we're resizing and not initializing
-                        (when (safe-mem-memory-map safe-mem)
-                              (unmap-file-from-memory (safe-mem-memory-map safe-mem)))
-                        ;; mmap ahoy
-                        (let ((mmap (map-file-to-memory #f (safe-mem-memory-size safe-mem) 
-                                                        (safe-mem-memory-map-protection safe-mem) 
-                                                        (safe-mem-memory-map-flags safe-mem) 
-                                                        (safe-mem-shared-memory safe-mem))))
-                          (safe-mem-memory-map-set! safe-mem mmap)))))
+          ;; ;; Check if mmap or resize is necessary
+          ;; (when (or (not (safe-mem-memory-map safe-mem)) 
+          ;;           (> (object-size value) (safe-mem-memory-size safe-mem)))
+          ;;       (let ((remap (not (safe-mem-memory-map safe-mem))))
+          ;;         ;; Set the new size if necessary
+          ;;         (when (or (and (safe-mem-grow safe-mem) (> (object-size value) (safe-mem-memory-size safe-mem)))
+          ;;                   (and (safe-mem-shrink safe-mem) (< (object-size value) (safe-mem-memory-size safe-mem))))
+          ;;               (safe-mem-memory-size-set! safe-mem (object-size value))
+          ;;               (set! remap #t))
+          ;;         ;; Resize the pshm object if necessary
+          ;;         (safe-mem-truncate! safe-mem)
+          ;;         ;; Remap the memory map if any resizing occurred, or if we're initializing
+          ;;         (when remap
+          ;;               ;; Unmap if we're resizing and not initializing
+          ;;               (when (safe-mem-memory-map safe-mem)
+          ;;                     (unmap-file-from-memory (safe-mem-memory-map safe-mem)))
+          ;;               ;; mmap ahoy
+          ;;               (let ((mmap (map-file-to-memory #f (safe-mem-memory-size safe-mem) 
+          ;;                                               (safe-mem-memory-map-protection safe-mem) 
+          ;;                                               (safe-mem-memory-map-flags safe-mem) 
+          ;;                                               (safe-mem-shared-memory safe-mem))))
+          ;;                 (safe-mem-memory-map-set! safe-mem mmap)))))
 
           ;; Write the new value to the location
           (receive (v p) 
@@ -79,6 +79,13 @@
                 (set! size (safe-mem-memory-size safe-mem)))
           (file-truncate (safe-mem-shared-memory safe-mem) size))
 
+        (define (safe-mem-remap! safe-mem)
+          (let ((mmap (map-file-to-memory #f (safe-mem-memory-size safe-mem) 
+                                          (safe-mem-memory-map-protection safe-mem) 
+                                          (safe-mem-memory-map-flags safe-mem) 
+                                          (safe-mem-shared-memory safe-mem))))
+            (safe-mem-memory-map-set! safe-mem mmap)))
+
         (define make-safe-mem
           (let ((%make make-safe-mem))
             (lambda (value 
@@ -89,10 +96,9 @@
                      (semaphore-mode 0644)
                      (memory-map-protection (bitwise-ior prot/read prot/write prot/exec))
                      (memory-map-flags map/shared)
-                     (copy #t)
-                     (grow #t)
-                     (shrink #t))
-              (let ((size (object-size value)))
+                     (size 0)
+                     (copy #t))
+              (let ((size (if (= 0 size) (object-size value) size)))
                 (assert (< 0 size) "Shared object size must be greater than zero. (Did you try to share an immediate object?)")
                 (let* ((mmap #f)
                        (pass-count 0)
@@ -105,10 +111,9 @@
                                         memory-map-protection
                                         memory-map-flags
                                         copy
-                                        grow
-                                        shrink
                                         pass-count)))
-                  ;; safe-mem-set! handles the initialization of the mmap, as well as writing the value
+                  (safe-mem-truncate! safe-mem)
+                  (safe-mem-remap! safe-mem)
                   (safe-mem-set! safe-mem value)
                   safe-mem)))))
 
