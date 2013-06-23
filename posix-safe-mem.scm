@@ -5,11 +5,11 @@
 
         ;; Store PSHM object
         (define-record safe-mem 
-          semaphore semaphore-name memory-size shared-memory shared-memory-path memory-map memory-map-protection memory-map-flags copy pass-count #|grow shrink |#)
+          semaphore semaphore-name memory-size shared-memory shared-memory-path memory-map memory-map-protection memory-map-flags copy full pass-count #|grow shrink |#)
 
         (define-record-printer (safe-mem m p)
-          (fprintf p "#,<safe-mem semaphore: ~S semaphore-name: ~S memory-size: ~S shared-memory: ~S shared-memory-path: ~S memory-map: ~S copy: ~S pass-count:~S>"
-                   (safe-mem-semaphore m) (safe-mem-semaphore-name m) (safe-mem-memory-size m) (safe-mem-shared-memory m) (safe-mem-shared-memory-path m) (safe-mem-memory-map m) (safe-mem-copy m) (safe-mem-pass-count m)))
+          (fprintf p "#,<safe-mem semaphore: ~S semaphore-name: ~S memory-size: ~S shared-memory: ~S shared-memory-path: ~S memory-map: ~S copy: ~S full: ~S pass-count:~S>"
+                   (safe-mem-semaphore m) (safe-mem-semaphore-name m) (safe-mem-memory-size m) (safe-mem-shared-memory m) (safe-mem-shared-memory-path m) (safe-mem-memory-map m) (safe-mem-copy m) (safe-mem-full m) (safe-mem-pass-count m)))
 
         (define (lock-safe-mem safe-mem)
           (when (>= 0 (safe-mem-pass-count safe-mem))
@@ -35,7 +35,7 @@
         (define (safe-mem-get safe-mem)
           (let ((primary (pointer->object (memory-mapped-file-pointer (safe-mem-memory-map safe-mem)))))
             (if (safe-mem-copy safe-mem)
-                (object-unevict primary #t)
+                (object-unevict primary (safe-mem-full safe-mem))
                 primary)))
 
         (define (safe-mem-set! safe-mem value)
@@ -84,7 +84,8 @@
                      (memory-map-protection (bitwise-ior prot/read prot/write prot/exec))
                      (memory-map-flags map/shared)
                      (size 0)
-                     (copy #t))
+                     (copy #t)
+                     (full #t))
               (let ((size (if (= 0 size) (object-size value) size)))
                 (assert (< 0 size) "Shared object size must be greater than zero. (Did you try to share an immediate object?)")
                 (let* ((mmap #f)
@@ -98,6 +99,7 @@
                                         memory-map-protection
                                         memory-map-flags
                                         copy
+                                        full
                                         pass-count)))
                   (safe-mem-truncate! safe-mem)
                   (safe-mem-remap! safe-mem)
@@ -121,14 +123,8 @@
            a 
            (with-safe-mem 
             b
-            (if (safe-mem-copy a)
-                (let* ((t (safe-mem-get a))
-                       (t2 (safe-mem-get b)))
-                  (safe-mem-set! a (if (safe-mem-copy b) t2 (object-evict t2)))
-                  (safe-mem-set! b t))
-                (let* ((t (object-evict (safe-mem-get a)))
-                       (t2 (safe-mem-get b)))
-                  (safe-mem-set! a (if (safe-mem-copy b) t2 (object-evict t2)))
-                  (safe-mem-set! b t)))))
-          #t)
-)
+            (let* ((t (safe-mem-get a))
+                   (t2 (safe-mem-get b)))
+              (safe-mem-set! a (object-evict t2))
+              (safe-mem-set! b t))))
+          #t))
