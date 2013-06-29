@@ -123,8 +123,8 @@
            a 
            (with-safe-mem 
             b
-            (let* ((t (safe-mem-get a))
-                   (t2 (safe-mem-get b)))
-              (safe-mem-set! a (object-evict t2))
+            (let* ((t (object-unevict (safe-mem-get a) #t))
+                   (t2 (object-unevict (safe-mem-get b) #t)))
+              (safe-mem-set! a t2)
               (safe-mem-set! b t))))
           #t))
