@@ -8,5 +8,5 @@
 (install-extension
  'posix-safe-mem
  '("posix-safe-mem.so" "posix-safe-mem.o" "posix-safe-mem.import.so")
- '((version 0.1.7)
+ '((version 0.1.8)
    (static "posix-safe-mem.o")))

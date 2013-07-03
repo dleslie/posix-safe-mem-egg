@@ -119,12 +119,12 @@
            #t))
 
         (define (swap-safe-mem! a b)
-          (with-safe-mem 
-           a 
-           (with-safe-mem 
-            b
-            (let* ((t (object-unevict (safe-mem-get a) #t))
-                   (t2 (object-unevict (safe-mem-get b) #t)))
-              (safe-mem-set! a t2)
-              (safe-mem-set! b t))))
+          (lock-safe-mem a)
+          (lock-safe-mem b)
+          (let* ((t (object-unevict (safe-mem-get a) #t))
+                 (t2 (object-unevict (safe-mem-get b) #t)))
+            (safe-mem-set! a t2)
+            (safe-mem-set! b t))
+          (unlock-safe-mem b)
+          (unlock-safe-mem a)
           #t))
